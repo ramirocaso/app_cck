@@ -7,6 +7,8 @@ from google.oauth2.service_account import Credentials
 from google.oauth2 import service_account
 from datetime import datetime
 
+### ESTO ESTÁ LISTO!!! ### 
+
 # Configuración de la página
 st.set_page_config(page_title="Encuesta CCK", layout="wide")
 
