@@ -124,7 +124,7 @@ def save_response(worksheet, response_data):
     except Exception as e:
         st.error(f"Error al guardar en Google Sheets: {str(e)}")
         return False
-
+        
 # Lista de posibles eventos críticos
 eventos_criticos = [
     "Fuga de información confidencial",
