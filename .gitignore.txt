@@ -1,0 +1,46 @@
+# .gitignore para tu proyecto
+
+# Archivos de credenciales de Google
+credentials.json
+*.pem
+*.p12
+*creds*.json
+*secret*.json
+*key*.json
+.streamlit/secrets.toml
+.env
+
+# Entornos virtuales
+venv/
+env/
+.venv/
+ENV/
+
+# Caché y archivos compilados
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Archivos temporales
+*.log
+*.bak
+*.swp
+*~
+.DS_Store
+
+# Archivos de configuración de IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Archivos de datos y resultados
+*.csv
+*.xlsx
+*.xls
+data/
+results/
+!example_data/*.csv  # Excluir datos de ejemplo si los tienes
