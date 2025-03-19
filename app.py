@@ -72,6 +72,16 @@ def connect_to_gsheets(spreadsheet_name):
         # Asegurarse de que existe la hoja de trabajo
         try:
             worksheet = spreadsheet.worksheet("Respuestas")
+            
+            # Añadir encabezados siempre (aunque la hoja ya exista)
+            headers = [
+                "ID_Respuesta", "Nombre_Cliente", "Fecha_Respuesta", 
+                "Nivel_Cargo", "Fecha_Inicio", "Departamento",
+                "Evento", "Probabilidad", "Ocurrencia", "Detección", 
+                "Estructura", "Impacto", "Responsabilidad", "Autoeficacia"
+            ]
+            worksheet.update('A1', [headers])
+            
         except gspread.WorksheetNotFound:
             worksheet = spreadsheet.add_worksheet(title="Respuestas", rows=1000, cols=50)
             
