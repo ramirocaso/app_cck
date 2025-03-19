@@ -6,7 +6,7 @@ import json
 from google.oauth2.service_account import Credentials
 from google.oauth2 import service_account
 from datetime import datetime
-
+import uuid
 
 # Configuración de la página
 st.set_page_config(page_title="Encuesta CCK", layout="wide")
@@ -62,6 +62,7 @@ def connect_to_gsheets(spreadsheet_name):
     
     if credentials is None:
         return None
+    
     gc = gspread.authorize(credentials)
     
     # Abrir una hoja específica por ID
@@ -74,10 +75,13 @@ def connect_to_gsheets(spreadsheet_name):
         except gspread.WorksheetNotFound:
             worksheet = spreadsheet.add_worksheet(title="Respuestas", rows=1000, cols=50)
             
-            # Añadir encabezados a la hoja (nuevo)
-            headers = ["Evento", "Probabilidad", "Ocurrencia", "Detección", "Estructura", "Impacto", 
-                      "Responsabilidad", "Autoeficacia", "Nivel_Cargo", "Fecha_Inicio", 
-                      "Departamento", "Fecha_Respuesta", "Nombre_Cliente"]
+            # Añadir encabezados a la hoja (columnas específicas)
+            headers = [
+                "ID_Respuesta", "Nombre_Cliente", "Fecha_Respuesta", 
+                "Nivel_Cargo", "Fecha_Inicio", "Departamento",
+                "Evento", "Probabilidad", "Ocurrencia", "Detección", 
+                "Estructura", "Impacto", "Responsabilidad", "Autoeficacia"
+            ]
             worksheet.update('A1', [headers])
         
         return worksheet
@@ -140,6 +144,8 @@ if 'error_credenciales' not in st.session_state:
     st.session_state.error_credenciales = False
 if 'nombre_cliente' not in st.session_state:
     st.session_state.nombre_cliente = ""
+if 'response_id' not in st.session_state:
+    st.session_state.response_id = str(uuid.uuid4())[:8]  # ID único para cada sesión de respuesta
 
 # Función para cambiar de página
 def cambiar_pagina(nueva_pagina, evento=None):
@@ -190,6 +196,8 @@ if st.session_state.page == "inicio":
     
     if st.button("Continuar"):
         if consentimiento == "Estoy de acuerdo, deseo continuar":
+            # Generar un nuevo ID de respuesta al comenzar una nueva encuesta
+            st.session_state.response_id = str(uuid.uuid4())[:8]
             cambiar_pagina("instrucciones")
         else:
             st.error("Ha decidido no participar en la encuesta. Gracias por su tiempo.")
@@ -381,52 +389,86 @@ elif st.session_state.page == "guardar":
     st.title("CCK")
     st.subheader("Guardando sus respuestas")
     
-    # Crear un diccionario con todas las respuestas
-    todas_respuestas = []
-    for evento, respuestas in st.session_state.respuestas.items():
-        respuesta_completa = respuestas.copy()
-        # Añadir datos demográficos
-        for key, value in st.session_state.demograficos.items():
-            respuesta_completa[key] = value
-        # Añadir fecha y hora
-        respuesta_completa["Fecha_Respuesta"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        # Añadir nombre del cliente
-        respuesta_completa["Nombre_Cliente"] = st.session_state.nombre_cliente
-        todas_respuestas.append(respuesta_completa)
+    # Fecha y hora actual
+    fecha_hora_actual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     
-    # Verificar si podemos guardar en Google Sheets
+    # Obtener el worksheet para guardar datos
+    worksheet = None
     if st.session_state.credenciales_verificadas:
         try:
-            # Nombre de la hoja de cálculo
-            spreadsheet_name = "Respuestas Encuesta CCK"
-            
-            # Progreso
-            progress_bar = st.progress(0)
-            
-            for i, respuesta in enumerate(todas_respuestas):
-                # Conectar con Google Sheets
-                worksheet = connect_to_gsheets(spreadsheet_name)
-                
-                # Guardar la respuesta
-                if worksheet and save_response(worksheet, respuesta):
-                    progress_bar.progress((i + 1) / len(todas_respuestas))
-                else:
-                    st.session_state.error_credenciales = True
-                    break
-            
-            if not st.session_state.error_credenciales:
-                st.success("¡Gracias por completar la encuesta! Sus respuestas han sido guardadas correctamente.")
-            
+            worksheet = connect_to_gsheets("Respuestas Encuesta CCK")
         except Exception as e:
-            st.error(f"Error al guardar las respuestas: {str(e)}")
+            st.error(f"Error al conectar con Google Sheets: {str(e)}")
             st.session_state.error_credenciales = True
-    else:
-        st.warning("No se pudieron verificar las credenciales de Google Sheets.")
-        st.session_state.error_credenciales = True
+    
+    # Crear un diccionario con todas las respuestas (una fila por evento)
+    guardar_exitoso = True
+    progress_bar = st.progress(0)
+    
+    for i, (evento, respuestas) in enumerate(st.session_state.respuestas.items()):
+        # Preparar datos para este evento específico
+        datos_evento = {
+            "ID_Respuesta": st.session_state.response_id,
+            "Nombre_Cliente": st.session_state.nombre_cliente,
+            "Fecha_Respuesta": fecha_hora_actual,
+            "Nivel_Cargo": st.session_state.demograficos["Nivel_Cargo"],
+            "Fecha_Inicio": st.session_state.demograficos["Fecha_Inicio"],
+            "Departamento": st.session_state.demograficos["Departamento"],
+            "Evento": evento,
+            "Probabilidad": respuestas["Probabilidad"],
+            "Ocurrencia": respuestas["Ocurrencia"],
+            "Detección": respuestas["Detección"],
+            "Estructura": respuestas["Estructura"],
+            "Impacto": respuestas["Impacto"],
+            "Responsabilidad": respuestas["Responsabilidad"],
+            "Autoeficacia": respuestas["Autoeficacia"]
+        }
+        
+        # Guardar datos en Google Sheets para este evento
+        if worksheet and not st.session_state.error_credenciales:
+            try:
+                if not save_response(worksheet, datos_evento):
+                    st.session_state.error_credenciales = True
+                    guardar_exitoso = False
+                    break
+            except Exception as e:
+                st.error(f"Error al guardar respuesta para evento {evento}: {str(e)}")
+                st.session_state.error_credenciales = True
+                guardar_exitoso = False
+                break
+        
+        # Actualizar barra de progreso
+        progress_bar.progress((i + 1) / len(st.session_state.respuestas))
+    
+    # Mensajes de éxito o error
+    if not st.session_state.error_credenciales and guardar_exitoso:
+        st.success("¡Gracias por completar la encuesta! Sus respuestas han sido guardadas correctamente.")
     
     # Si hay problemas con las credenciales, ofrecer descarga
-    if st.session_state.error_credenciales:
+    if st.session_state.error_credenciales or not guardar_exitoso:
+        st.warning("No se pudieron guardar todas las respuestas en Google Sheets.")
         st.info("Sus respuestas están listas para ser descargadas como archivo CSV.")
+        
+        # Preparar datos para descarga
+        todas_respuestas = []
+        for evento, respuestas in st.session_state.respuestas.items():
+            datos_evento = {
+                "ID_Respuesta": st.session_state.response_id,
+                "Nombre_Cliente": st.session_state.nombre_cliente,
+                "Fecha_Respuesta": fecha_hora_actual,
+                "Nivel_Cargo": st.session_state.demograficos["Nivel_Cargo"],
+                "Fecha_Inicio": st.session_state.demograficos["Fecha_Inicio"],
+                "Departamento": st.session_state.demograficos["Departamento"],
+                "Evento": evento,
+                "Probabilidad": respuestas["Probabilidad"],
+                "Ocurrencia": respuestas["Ocurrencia"],
+                "Detección": respuestas["Detección"],
+                "Estructura": respuestas["Estructura"],
+                "Impacto": respuestas["Impacto"],
+                "Responsabilidad": respuestas["Responsabilidad"],
+                "Autoeficacia": respuestas["Autoeficacia"]
+            }
+            todas_respuestas.append(datos_evento)
         
         # Crear DataFrame para descargar
         df_respuestas = pd.DataFrame(todas_respuestas)
